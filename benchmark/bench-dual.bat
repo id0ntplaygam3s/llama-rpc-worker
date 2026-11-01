@@ -2,11 +2,13 @@
 REM Benchmark: DUAL GPU (local GPU + remote RPC worker)
 REM Kills all running llama-server.exe processes before and after the run.
 REM Make sure the RPC worker on port 50052 is reachable before running.
+REM
+REM Edit the variables at the top before running.
 
 set LLAMA_DIR=C:\path\to\llama.cpp
 set MODEL=C:\path\to\model.gguf
 set PY=python
-set RPC_HOST=192.168.x.x:50052
+set RPC_HOST=<rpc_worker_ip>:50052
 
 taskkill /im llama-server.exe /f >nul 2>&1
 timeout /t 3 >nul
@@ -22,7 +24,11 @@ start "bench-server" /min "%LLAMA_DIR%\llama-server.exe" ^
   --host 127.0.0.1 --port 8033 ^
   --rpc %RPC_HOST%
 
-"%PY%" "%~dp0bench.py" --label dual --out "%~dp0results-dual.csv" --wait
+REM Context sizes: 512, 1K, 2K, 4K, 8K, 16K, 24K, 32K, 48K, 64K, 75K
+REM 5 runs per size for steadier numbers, 256 tokens generated each time.
+"%PY%" "%~dp0bench.py" --label dual --out "%~dp0results-dual.csv" ^
+  --sizes 512 1000 2000 4000 8000 16000 24000 32000 48000 64000 75000 ^
+  --runs 5 --gen 256 --wait
 
 echo Stopping server...
 taskkill /im llama-server.exe /f >nul 2>&1

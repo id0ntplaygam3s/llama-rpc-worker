@@ -15,7 +15,7 @@ Prebuilt Docker image of the llama.cpp RPC server with CUDA GPU acceleration, bu
 - [Benchmark results](#benchmark-results)
   - [Setup](#setup)
   - [Performance: single vs dual GPU](#performance-single-vs-dual-gpu)
-  - [When to use which](#when-to-use-which)
+  - [Key findings](#key-findings)
   - [Caveats](#caveats)
 - [Benchmark your own setup](#benchmark-your-own-setup)
   - [Quick start](#quick-start)
@@ -126,28 +126,71 @@ cmake --build build --config Release -j
 | llama.cpp | Build 11869 (commit `d327bf1f0`) |
 | Network | Wired gigabit LAN, RPC on TCP 50052 |
 
-### Performance: single vs dual GPU
+### What was tested
 
-Dual-GPU mainly speeds up generation at moderate context and slows prompt processing on large batches; see below.
+- **Context sizes:** 512, 1K, 2K, 4K, 8K, 16K, 24K, 32K, 48K, 64K, 75K tokens.
+- **Runs:** 5 per size, in ascending order, 256 generated tokens per request.
+- **Method:** Fixed-length filler prompts (random seed 42), prompt cache off, temperature 0, `ignore_eos`, speeds from the server's own timings.
+- **Single flags:** `--fit on --fit-ctx 128000 --fit-target 256 -np 1 -fa on -t 8 -b 2048 -ub 2048 -ctk q8_0 -ctv q8_0`
+- **Dual flags:** same + `--rpc <rpc_worker_ip>:50052`
 
-#### Results
+### Full results (mean of 5 runs)
 
-| Context | Prompt tok/s (single -> dual) | Gen tok/s (single -> dual) |
-|---------|-------------------------------|----------------------------|
-| 1K  | 723 -> 498 (-31%) | 47.2 -> 51.3 (+9%) |
-| 16K | 521 -> 554 (+6%)  | 38.6 -> 49.0 (+27%) |
-| 48K | 575 -> 404 (-30%) | 39.9 -> 40.7 (+2%) |
+| Context | Prompt tok/s single | dual | Change | Gen tok/s single | dual | Change |
+|---|---|---|---|---|---|---|
+| 512 | 859 | 554 | −35% | 51.7 | 50.3 | −3% |
+| 1K | 579 | 540 | −7% | 50.8 | 54.2 | +7% |
+| 2K | 665 | 579 | −13% | 51.0 | 54.1 | +6% |
+| 4K | 724 | 592 | −18% | 51.8 | 55.4 | +7% |
+| 8K | 763 | 477 | −37% | 51.7 | 45.4 | −12% |
+| 16K | 750 | 449 | −40% | 48.4 | 45.0 | −7% |
+| 24K | 627 | 395 | −37% | 46.0 | 46.0 | 0% |
+| 32K | 609 | 281 | −54% | 45.0 | 40.2 | −11% |
+| 48K | 498 | 194 | −61% | 42.0 | 13.7 | −67% |
+| 64K | 358 | 171 | −52% | 39.2 | 8.2 | −79% |
+| 75K | 376 | 153 | −59% | 39.6 | 7.4 | −81% |
 
-A real 75K-token opencode prompt measured about 165 tok/s on single and about 137 tok/s on dual.
+### Visual comparison
 
-### When to use which
+**Prompt processing (tok/s)** — higher is better
 
-- **Dual GPU** for short or medium sessions (under roughly 30-35K tokens of context): replies are about 10-25% faster, saving roughly 5-6 s per turn.
-- **Single GPU** for large contexts or long sessions: generation is about equal by 48K, and a cold 48K prompt load takes about 119 s on dual versus 84 s on single. Single also has no network or TrueNAS dependency.
+![Prompt Processing](benchmark/prompt-chart.png)
+
+**Generation speed (tok/s)** — higher is better
+
+![Generation Speed](benchmark/gen-chart.png)
+
+\* dual wins at 1–4K generation (by about 6–7%, ≈ 1 s per turn).
+
+### Key findings
+
+1. **Single GPU is faster at prompt processing at every context size.** The gap widens from −7% at 1K to −61% at 48K.
+2. **Dual GPU only wins at 1–4K generation** (by about 6–7%), worth roughly 1 second per turn. From 8K up, dual is equal or slower.
+3. **Dual cliff at 48K and above:** dual generation drops to 7–14 tok/s while single holds 39–42 tok/s all the way to 75K. The cause was not established and may be specific to this setup (e.g. power/thermal limits or memory pressure on the worker machine), so treat dual's 48K+ numbers with caution.
+4. **Per-turn cost** (2,000 new prompt tokens + 1,000 generated) at largest common context:
+   - At 16K: single ≈ 23 s, dual ≈ 27 s
+   - At 32K: single ≈ 25.5 s, dual ≈ 32 s
+   - At 4K: roughly equal
+5. **Cold prompt loads** (mean time to process a prompt from scratch):
+
+   | Context | Single | Dual |
+   |---|---|---|
+   | 16K | ≈ 21 s | ≈ 37 s |
+   | 48K | ≈ 107 s | ≈ 249 s |
+   | 75K | ≈ 200 s | ≈ 490 s |
+
+6. **Real-world measurement:** a real 75K-token opencode prompt measured about 165 tok/s on single and about 137 tok/s on dual.
+
+### Recommendation
+
+**Default to single GPU** for this model on this hardware. Dual may still make sense when a model does not fit otherwise (a larger model or quant than one GPU plus RAM can hold); that case was not tested here.
 
 ### Caveats
 
-Only 2 runs per point; the filler-text prompts make absolute prompt speeds about 3× higher than real prompts, so trust the ratios more than the raw numbers. Results will differ on other hardware, models and networks.
+- Filler-text prompts make absolute prompt speeds higher than real prompts — trust the ratios more than the raw numbers.
+- Single-GPU prompt speed also varied at 48K+ (about 320–680 tok/s).
+- Results will differ on other hardware, models, and networks.
+- Dual GPU needs the RPC worker reachable on port 50052 before `llama-server` starts.
 
 ## Benchmark your own setup
 
@@ -175,15 +218,26 @@ The `benchmark/` folder contains `bench.py` (Python 3, standard library only —
 
 It also works against any running `llama-server`, not just the batch files.
 
+### Example full run (from these results)
+
+```
+python benchmark/bench.py --label single --out benchmark/results-single.csv ^
+  --sizes 512 1000 2000 4000 8000 16000 24000 32000 48000 64000 75000 ^
+  --runs 5 --gen 256 --wait
+```
+
+On this hardware, a single run takes roughly **one hour**. Dual takes up to **two hours**.
+
 ### Compare output
 
-The `compare` subcommand prints prompt and generation speeds per context size for each setup, the percentage change, and an estimated time for a turn of 2000 new prompt tokens plus 1000 generated tokens at the deepest context.
+The `compare` subcommand prints prompt and generation speeds per context size for each setup, the percentage change, and an estimated time for a turn of 2,000 new prompt tokens + 1,000 generated tokens at the deepest common context.
 
 ### Tips
 
-- Run both setups back to back with nothing else using the PC or network.
+- Nothing else should use the PC or network during a run.
 - Use `--runs 3` or more for steadier numbers.
-- Expect the first run after startup to be a little slower (cold model load).
+- Expect the first run after startup to be slower (cold model load).
+- Watch for speeds that decay run after run — this can indicate throttling or memory pressure.
 
 ## Building from source
 
