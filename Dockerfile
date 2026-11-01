@@ -269,9 +269,12 @@ RUN cmake -B build \
 
 FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
 
-RUN rm -rf /usr/local/cuda/compat
+RUN rm -rf /usr/local/cuda/compat && \
+    mkdir -p /usr/local/cuda/lib64/stubs
 
 COPY --from=build /src/build/bin/ggml-rpc-server /usr/local/bin/
+COPY --from=build /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so
+COPY --from=build /usr/local/cuda/lib64/stubs/libcuda.so.1 /usr/local/cuda/lib64/stubs/libcuda.so.1
 
 EXPOSE 50052/tcp
 ENTRYPOINT ["ggml-rpc-server"]
