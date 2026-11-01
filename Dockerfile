@@ -4,19 +4,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git cmake build-essential gcc && \
     rm -rf /var/lib/apt/lists/*
 
-# CUDA Driver API stubs for build-time linking (no host driver in container)
-# llama.cpp links against libcuda.so which exports cu* Driver API functions
-RUN mkdir -p /usr/local/cuda/lib64/stubs && \
-    cat > /tmp/cuda_driver_stub.c << 'STUBEOF'
+# Step 1: Create CUDA Driver API stubs directory
+RUN mkdir -p /usr/local/cuda/lib64/stubs
+
+# Step 2: Write the stub C source file
+RUN cat > /tmp/cuda_driver_stub.c << 'STUBEOF'
 #include <stddef.h>
 #include <stdint.h>
 typedef int CUresult;
 typedef int CUdevice;
+typedef unsigned long long CUmem_generic_alloc_handle_t;
 typedef void *CUmemoryPool;
-typedef int CUmemAllocationHandleType;
-typedef unsigned int CUmemAccess_flags;
-typedef long long CUmem_generic_alloc_t;
-
+typedef int CUmem_allocation_handle_type;
+typedef unsigned int CUmem_access_flags;
+typedef int CUdevice_attribute;
+typedef int CUdevice_attribute_enum;
+typedef unsigned int CUmem_allocation_handle_type_enum;
+typedef unsigned int CUmem_access_flags_enum;
 CUresult cuInit(unsigned int){return 0;}
 CUresult cuGetExportTable(void**,void**){return 0;}
 CUresult cuDriverGetVersion(int*){return 0;}
@@ -24,8 +28,6 @@ CUresult cuGetProcAddress(void**,char*,int,int,int*){return 0;}
 CUresult cuGetProcAddressv(void**,void*){return 0;}
 CUresult cuGetErrorName(CUresult,char**){return 0;}
 CUresult cuGetErrorString(CUresult,char**){return 0;}
-
-/* Context */
 CUresult cuCtxCreate(void**,int,CUdevice){return 0;}
 CUresult cuCtxDestroy(void*){return 0;}
 CUresult cuCtxGetCurrent(void**){return 0;}
@@ -45,8 +47,6 @@ CUresult cuCtxDetach(void*){return 0;}
 CUresult cuCtxGetStream(void**,int,void*){return 0;}
 CUresult cuCtxGetIpcDevice(void**){return 0;}
 CUresult cuCtxIpcSetMemPool(void*,CUmemoryPool*){return 0;}
-
-/* Device */
 CUresult cuDeviceGet(CUdevice*,int){return 0;}
 CUresult cuDeviceGetCount(int*){return 0;}
 CUresult cuDeviceGetAttribute(int*,int,CUdevice){return 0;}
@@ -65,8 +65,6 @@ CUresult cuDevicePrimaryCtxRetain(void**,CUdevice){return 0;}
 CUresult cuDevicePrimaryCtxRelease(CUdevice){return 0;}
 CUresult cuDevicePrimaryCtxSetFlags(CUdevice,unsigned int){return 0;}
 CUresult cuDevicePrimaryCtxReset(CUdevice){return 0;}
-
-/* Memory (legacy) */
 CUresult cuMemAlloc(void**,size_t){return 0;}
 CUresult cuMemFree(void*){return 0;}
 CUresult cuMemAllocHost(void**,size_t){return 0;}
@@ -77,18 +75,16 @@ CUresult cuMemAllocAsync(void**,size_t,CUmemoryPool*,void*){return 0;}
 CUresult cuMemFreeAsync(void*,void*){return 0;}
 CUresult cuMemGetInfo(size_t*,size_t*){return 0;}
 CUresult cuMemHostAlloc(void**,size_t,unsigned int){return 0;}
-
-/* Memory (Unified/Address) */
 CUresult cuMemAddressReserve(void**,size_t,size_t,unsigned int,CUmemoryPool*,unsigned int){return 0;}
 CUresult cuMemAddressFree(void*,size_t){return 0;}
-CUresult cuMemCreate(CUmemoryPool*,size_t,unsigned int,CUmemoryPool*,void*);
-CUresult cuMemGetAllocationGranularity(size_t*,CUmemoryPool*,unsigned int);
-CUresult cuMemGetAllocationHandleType(unsigned int*,CUmemoryPool*,void*,CUmemAllocationHandleType);
-CUresult cuMemRetainAllocationHandle(CUmemoryPool**,void*,char*);
-CUresult cuMemRelease(CUmemoryPool*);
-CUresult cuMemUnmap(void**,size_t);
-CUresult cuMemSetAccess(void**,size_t,CUmemoryPool*,CUmemAccess_flags,unsigned int);
-CUresult cuMemMap(void**,size_t,unsigned int,CUmem_generic_alloc_t,CUmemoryPool*,unsigned int);
+CUresult cuMemCreate(CUmem_generic_alloc_handle_t*,size_t,const CUmem_allocation_handle_type,unsigned int);
+CUresult cuMemGetAllocationGranularity(size_t*,const CUmem_allocation_handle_type,unsigned int);
+CUresult cuMemGetAllocationHandleType(unsigned int*,CUmem_generic_alloc_handle_t,CUmem_allocation_handle_type);
+CUresult cuMemRetainAllocationHandle(CUmemoryPool*,void*);
+CUresult cuMemRelease(CUmem_generic_alloc_handle_t);
+CUresult cuMemMap(CUmem_generic_alloc_handle_t,size_t,size_t,CUmem_generic_alloc_handle_t,CUmemoryPool,unsigned int);
+CUresult cuMemUnmap(void*,size_t);
+CUresult cuMemSetAccess(void*,size_t,const CUmem_access_flags*,int);
 CUresult cuMemGetAddressRange(void**,size_t,void*);
 CUresult cuMemPoolTrimTo(CUmemoryPool*,size_t);
 CUresult cuMemPoolSetAccess(CUmemoryPool*,void*,size_t);
@@ -100,13 +96,9 @@ CUresult cuMemPoolImportPointer(CUmemoryPool*,void**);
 CUresult cuMemPoolExportToShareLevel(void**,CUmemoryPool*,unsigned int,unsigned int);
 CUresult cuMemPoolImportFromShareLevel(void**,void*,unsigned int,unsigned int);
 CUresult cuMemPoolWaitForFreeEvent(CUmemoryPool*,void*,void*);
-CUresult cuMemAllocFromPoolAsync(void**,size_t,CUmemoryPool*,void*){return 0;}
-
-/* Memory Pool */
-CUresult cuMemPoolCreate(CUmemoryPool*,void*){return 0;}
-CUresult cuMemPoolDestroy(CUmemoryPool*){return 0;}
-
-/* Memory Copy */
+CUresult cuMemAllocFromPoolAsync(void**,size_t,CUmemoryPool*,void*);
+CUresult cuMemPoolCreate(CUmemoryPool*,void*);
+CUresult cuMemPoolDestroy(CUmemoryPool*);
 CUresult cuMemcpyHtoD(void*,void*,size_t){return 0;}
 CUresult cuMemcpyDtoH(void*,void*,size_t){return 0;}
 CUresult cuMemcpyHtoH(void*,void*,size_t){return 0;}
@@ -117,37 +109,29 @@ CUresult cuMemcpyHtoDAsync(void*,void*,size_t,void*){return 0;}
 CUresult cuMemcpyDtoHAsync(void*,void*,size_t,void*){return 0;}
 CUresult cuMemcpyHtoHAsync(void*,void*,size_t,void*){return 0;}
 CUresult cuMemcpyDtoDAsync(void*,void*,size_t,void*){return 0;}
-
-/* Memory Set */
 CUresult cuMemsetD8(void*,unsigned int,size_t){return 0;}
 CUresult cuMemsetD16(void*,unsigned short,size_t){return 0;}
 CUresult cuMemsetD32(void*,unsigned int,size_t){return 0;}
 CUresult cuMemsetD8Async(void*,unsigned int,size_t,void*){return 0;}
 CUresult cuMemsetD16Async(void*,unsigned short,size_t,void*){return 0;}
 CUresult cuMemsetD32Async(void*,unsigned int,size_t,void*){return 0;}
-
-/* Stream */
 CUresult cuStreamCreate(void**,unsigned int){return 0;}
 CUresult cuStreamDestroy(void*){return 0;}
 CUresult cuStreamSynchronize(void*){return 0;}
 CUresult cuStreamQuery(void*){return 0;}
 CUresult cuStreamWaitValue(void*,unsigned int*,unsigned int,unsigned int){return 0;}
 CUresult cuStreamWriteValue(void*,unsigned int*,unsigned int,unsigned int){return 0;}
-CUresult cuStreamCopyAttributes(void*,void*,unsigned int,void**,unsigned int*){return 0;}
-CUresult cuStreamGetAttributes(void*,unsigned int*,void**,unsigned int*){return 0;}
-CUresult cuStreamGetCtx(void**,void*){return 0;}
-
-/* Event */
+CUresult cuStreamCopyAttributes(void*,void*,unsigned int,void**,unsigned int*);
+CUresult cuStreamGetAttributes(void*,unsigned int*,void**,unsigned int*);
+CUresult cuStreamGetCtx(void**,void*);
 CUresult cuEventCreate(void**,unsigned int){return 0;}
 CUresult cuEventDestroy(void*){return 0;}
 CUresult cuEventSynchronize(void*){return 0;}
 CUresult cuEventQuery(void*){return 0;}
 CUresult cuEventRecord(void*,void*){return 0;}
-CUresult cuIpcGetEventHandle(void*,void*){return 0;}
-CUresult cuIpcOpenEventHandle(void**,void*){return 0;}
-CUresult cuIpcCloseEventHandle(void*){return 0;}
-
-/* Module / Function */
+CUresult cuIpcGetEventHandle(void*,void*);
+CUresult cuIpcOpenEventHandle(void**,void*);
+CUresult cuIpcCloseEventHandle(void*);
 CUresult cuModuleLoad(CUresult*,char*){return 0;}
 CUresult cuModuleLoadData(CUresult*,void*){return 0;}
 CUresult cuModuleGetFunction(CUresult*,CUresult*,char*){return 0;}
@@ -164,12 +148,8 @@ CUresult cuParamSeti(CUresult*,int,unsigned int){return 0;}
 CUresult cuParamSetf(CUresult*,int,float){return 0;}
 CUresult cuParamSetv(CUresult*,int,void*,unsigned int){return 0;}
 CUresult cuParamSetTexRef(CUresult*,int,CUresult*){return 0;}
-
-/* Launch */
 CUresult cuLaunchKernel(CUresult*,void**,void**,void**,size_t,size_t,size_t,size_t,void**){return 0;}
 CUresult cuLaunchCooperativeKernel(CUresult*,void**,void**,size_t,size_t,size_t,void*){return 0;}
-
-/* Occupancy */
 CUresult cuOccupancyMaxActiveBlocksPerMultiprocessor(int*,CUresult*,int,void*);
 CUresult cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int*,CUresult*,int,void*,unsigned int);
 CUresult cuOccupancyMaxPotentialBlockSize(int*,int*,CUresult*,int,void*,int,unsigned int);
@@ -177,22 +157,16 @@ CUresult cuOccupancyMaxPotentialBlockSizeWithFlags(int*,int*,CUresult*,int,void*
 CUresult cuOccupancyAvailableDynamicSMemPerBlock(size_t*,CUresult*,int,void*);
 CUresult cuOccupancyMaxPotentialClusterSize(int*,CUresult*,int,void*);
 CUresult cuOccupancyMaxActiveClusters(int*,CUresult*,int,void*,int);
-
-/* Pointer */
 CUresult cuPointerSetAttribute(void*,void*,unsigned int){return 0;}
 CUresult cuPointerGetAttributes(unsigned int*,int*,void**,void**){return 0;}
-CUresult cuPointerGetAttribute(void*,int,void*,unsigned int){return 0;}
-
-/* Array */
+CUresult cuPointerGetAttribute(void*,int,void*,unsigned int);
 CUresult cuArrayCreate(void**,void*,int){return 0;}
 CUresult cuArrayDestroy(void*){return 0;}
 CUresult cuArray3DCreate(void**,void*,int){return 0;}
-CUresult cuArrayGetPlane(void**,void*,void*){return 0;}
+CUresult cuArrayGetPlane(void**,void*,void*);
 CUresult cuMipmappedArrayCreate(void**,void*,int){return 0;}
 CUresult cuMipmappedArrayDestroy(void*){return 0;}
-CUresult cuMipmappedArrayGetLevel(void**,void*,int){return 0;}
-
-/* Texture / Surface Reference */
+CUresult cuMipmappedArrayGetLevel(void**,void*,int);
 CUresult cuTexRefSetArray(CUresult*,void*,unsigned int){return 0;}
 CUresult cuTexRefSetMatrix(CUresult*,void*){return 0;}
 CUresult cuSurfRefSetArray(CUresult*,void*,unsigned int){return 0;}
@@ -221,75 +195,59 @@ CUresult cuTexRefGetMipmapFilterMode(int*,CUresult*){return 0;}
 CUresult cuTexRefGetMipmapLevelBias(float*,float*,CUresult*){return 0;}
 CUresult cuTexRefGetMipmapLevelClamp(float*,float*,CUresult*){return 0;}
 CUresult cuTexRefGetMipmappedLevel(int*,CUresult*){return 0;}
-CUresult cuSurfRefGetArray(void**,CUresult*){return 0;}
-
-/* Graphics Interop */
+CUresult cuSurfRefGetArray(void**,CUresult*);
 CUresult cuGraphicsUnregisterResource(void*){return 0;}
 CUresult cuGraphicsMapResources(int,void**,void*){return 0;}
 CUresult cuGraphicsUnmapResources(int,void**,void*){return 0;}
-CUresult cuGraphicsResourceGetMappedPointer(void**,size_t,void*){return 0;}
+CUresult cuGraphicsResourceGetMappedPointer(void**,size_t,void*);
 CUresult cuGraphicsResourceSetMapFlags(void*,unsigned int){return 0;}
-
-/* External Memory / Semaphore */
-CUresult cuImportExternalMemory(void**,void*){return 0;}
-CUresult cuExternalMemoryGetMappedBuffer(void**,void*,void*){return 0;}
-CUresult cuExternalMemoryGetMappedMipmappedArray(void**,void*,void*){return 0;}
+CUresult cuImportExternalMemory(void**,void*);
+CUresult cuExternalMemoryGetMappedBuffer(void**,void*,void*);
+CUresult cuExternalMemoryGetMappedMipmappedArray(void**,void*,void*);
 CUresult cuDestroyExternalMemory(void*){return 0;}
-CUresult cuImportExternalSemaphore(void**,void*){return 0;}
-CUresult cuSignalExternalSemaphoresAsync(void**,unsigned int*,void*,void*,void*){return 0;}
-CUresult cuWaitExternalSemaphoresAsync(void**,unsigned int*,void*,void*,void*){return 0;}
+CUresult cuImportExternalSemaphore(void**,void*);
+CUresult cuSignalExternalSemaphoresAsync(void**,unsigned int*,void*,void*,void*);
+CUresult cuWaitExternalSemaphoresAsync(void**,unsigned int*,void*,void*,void*);
 CUresult cuDestroyExternalSemaphore(void*){return 0;}
-
-/* Stream Capture / Graph */
 CUresult cuStreamBeginCapture(void*,unsigned int){return 0;}
-CUresult cuStreamEndCapture(void**,void*){return 0;}
-CUresult cuStreamIsCapturing(void*,unsigned int*){return 0;}
+CUresult cuStreamEndCapture(void**,void*);
+CUresult cuStreamIsCapturing(void*,unsigned int*);
 CUresult cuGraphCreate(void**,unsigned int){return 0;}
-CUresult cuGraphUpload(void*,void*){return 0;}
-CUresult cuGraphLaunch(void*,void*){return 0;}
+CUresult cuGraphUpload(void*,void*);
+CUresult cuGraphLaunch(void*,void*);
 CUresult cuGraphDestroy(void*){return 0;}
-CUresult cuGraphAddKernelNode(void**,void*,unsigned int,void**,void*,void**){return 0;}
-CUresult cuGraphAddMemcpyNode(void**,void*,unsigned int,void**,void*){return 0;}
-CUresult cuGraphAddMemsetNode(void**,void*,unsigned int,void**,void*){return 0;}
-CUresult cuGraphAddEmptyNode(void**,void*,unsigned int,void**){return 0;}
-CUresult cuGraphAddMemAllocNode(void**,void*,unsigned int,void**){return 0;}
-CUresult cuGraphAddMemFreeNode(void**,void*,unsigned int,void**,void*){return 0;}
-CUresult cuGraphClone(void**,void*){return 0;}
-CUresult cuGraphNodeFindInClone(void**,void*,void*){return 0;}
-CUresult cuGraphNodeSetEnabled(void*,unsigned int){return 0;}
-CUresult cuGraphChildGraphNodeGetChildGraphNode(void**,void*){return 0;}
-CUresult cuGraphKernelNodeGetParams(void*,void*){return 0;}
-CUresult cuGraphKernelNodeSetParams(void*,void**,void*,void**){return 0;}
-CUresult cuGraphMemcpyNodeGetParams(void*,void*){return 0;}
-CUresult cuGraphMemcpyNodeSetParams(void*,void*,void*,void**){return 0;}
-CUresult cuGraphMemsetNodeGetParams(void*,void*){return 0;}
-CUresult cuGraphMemsetNodeSetParams(void*,void*,void*,void**){return 0;}
-CUresult cuGraphAddDependencies(void*,unsigned int,void**,void**){return 0;}
-CUresult cuGraphDestroyNode(void*,void*){return 0;}
-CUresult cuGraphExtractToDot(char*,void*){return 0;}
-CUresult cuGraphDebugDotPrint(char*,char*,void*){return 0;}
-
-/* IPC */
-CUresult cuIpcGetMemHandle(void**,void*){return 0;}
+CUresult cuGraphAddKernelNode(void**,void*,unsigned int,void**,void*,void**);
+CUresult cuGraphAddMemcpyNode(void**,void*,unsigned int,void**,void*);
+CUresult cuGraphAddMemsetNode(void**,void*,unsigned int,void**,void*);
+CUresult cuGraphAddEmptyNode(void**,void*,unsigned int,void**);
+CUresult cuGraphAddMemAllocNode(void**,void*,unsigned int,void**);
+CUresult cuGraphAddMemFreeNode(void**,void*,unsigned int,void**,void*);
+CUresult cuGraphClone(void**,void*);
+CUresult cuGraphNodeFindInClone(void**,void*,void*);
+CUresult cuGraphNodeSetEnabled(void*,unsigned int);
+CUresult cuGraphChildGraphNodeGetChildGraphNode(void**,void*);
+CUresult cuGraphKernelNodeGetParams(void*,void*);
+CUresult cuGraphKernelNodeSetParams(void*,void**,void*,void**);
+CUresult cuGraphMemcpyNodeGetParams(void*,void*);
+CUresult cuGraphMemcpyNodeSetParams(void*,void*,void*,void**);
+CUresult cuGraphMemsetNodeGetParams(void*,void*);
+CUresult cuGraphMemsetNodeSetParams(void*,void*,void*,void**);
+CUresult cuGraphAddDependencies(void*,unsigned int,void**,void**);
+CUresult cuGraphDestroyNode(void*,void*);
+CUresult cuGraphExtractToDot(char*,void*);
+CUresult cuGraphDebugDotPrint(char*,char*,void*);
+CUresult cuIpcGetMemHandle(void**,void*);
 CUresult cuIpcOpenMemHandle(void**,void*,unsigned int){return 0;}
-CUresult cuIpcCloseMemHandle(void*){return 0;}
-
-/* Linking */
-CUresult cuLinkCreate(unsigned int,void**,char**,void*,void**){return 0;}
-CUresult cuLinkAddData(void*,int,void*,size_t,char**,unsigned int,void*,void*){return 0;}
-CUresult cuLinkAddFile(void*,int,char*,unsigned int,char**,unsigned int,void*,void*){return 0;}
-CUresult cuLinkComplete(void*,void**,size_t*){return 0;}
-CUresult cuLinkDestroy(void*){return 0;}
-
-/* CUDA IPC Memory */
-CUresult cuIpcGetMemHandle(void**,void*){return 0;}
-CUresult cuIpcOpenMemHandle(void**,void*,unsigned int){return 0;}
-CUresult cuIpcCloseMemHandle(void*){return 0;}
-
-/* Texture 1D Linear */
-CUresult cuDeviceGetTexture1DLinearMaxWidth(size_t*,int,size_t,size_t){return 0;}
+CUresult cuIpcCloseMemHandle(void*);
+CUresult cuLinkCreate(unsigned int,void**,char**,void*,void**);
+CUresult cuLinkAddData(void*,int,void*,size_t,char**,unsigned int,void*,void*);
+CUresult cuLinkAddFile(void*,int,char*,unsigned int,char**,unsigned int,void*,void*);
+CUresult cuLinkComplete(void*,void**,size_t*);
+CUresult cuLinkDestroy(void*);
 STUBEOF
-    gcc -shared -fPIC -o /usr/local/cuda/lib64/stubs/libcuda.so /tmp/cuda_driver_stub.c && \
+
+# Step 3: Compile stubs into libcuda.so
+RUN gcc -shared -fPIC -o /usr/local/cuda/lib64/stubs/libcuda.so /tmp/cuda_driver_stub.c && \
     ln -sf libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 
 ARG LLAMA_TAG=b11869
