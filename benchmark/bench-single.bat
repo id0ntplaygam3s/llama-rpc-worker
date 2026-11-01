@@ -1,6 +1,8 @@
 @echo off
 REM Benchmark: SINGLE GPU (local GPU only)
 REM Kills all running llama-server.exe processes before and after the run.
+REM
+REM Edit the variables at the top before running.
 
 set LLAMA_DIR=C:\path\to\llama.cpp
 set MODEL=C:\path\to\model.gguf
@@ -19,7 +21,11 @@ start "bench-server" /min "%LLAMA_DIR%\llama-server.exe" ^
   --jinja ^
   --host 127.0.0.1 --port 8033
 
-"%PY%" "%~dp0bench.py" --label single --out "%~dp0results-single.csv" --wait
+REM Context sizes: 512, 1K, 2K, 4K, 8K, 16K, 24K, 32K, 48K, 64K, 75K
+REM 5 runs per size for steadier numbers, 256 tokens generated each time.
+"%PY%" "%~dp0bench.py" --label single --out "%~dp0results-single.csv" ^
+  --sizes 512 1000 2000 4000 8000 16000 24000 32000 48000 64000 75000 ^
+  --runs 5 --gen 256 --wait
 
 echo Stopping server...
 taskkill /im llama-server.exe /f >nul 2>&1
