@@ -276,6 +276,8 @@ COPY --from=build /src/build/bin/ggml-rpc-server /usr/local/bin/
 COPY --from=build /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so
 COPY --from=build /usr/local/cuda/lib64/stubs/libcuda.so.1 /usr/local/cuda/lib64/stubs/libcuda.so.1
 
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
+
 EXPOSE 50052/tcp
 ENTRYPOINT ["ggml-rpc-server"]
 CMD ["-H", "0.0.0.0", "-p", "50052"]
