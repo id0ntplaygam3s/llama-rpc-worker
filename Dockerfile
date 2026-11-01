@@ -265,7 +265,7 @@ RUN cmake -B build \
     -DCMAKE_CUDA_ARCHITECTURES=86 \
     -DBUILD_SHARED_LIBS=OFF \
     -DCMAKE_EXE_LINKER_FLAGS="-Wl,-rpath-link,/usr/local/cuda/lib64/stubs" \
-    && cmake --build build --target rpc-server -j$(nproc)
+    && cmake --build build --target ggml-rpc-server -j$(nproc)
 
 FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
 
