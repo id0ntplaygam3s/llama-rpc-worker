@@ -77,14 +77,14 @@ CUresult cuMemGetInfo(size_t*,size_t*){return 0;}
 CUresult cuMemHostAlloc(void**,size_t,unsigned int){return 0;}
 CUresult cuMemAddressReserve(void**,size_t,size_t,unsigned int,CUmemoryPool*,unsigned int){return 0;}
 CUresult cuMemAddressFree(void*,size_t){return 0;}
-CUresult cuMemCreate(CUmem_generic_alloc_handle_t*,size_t,const CUmem_allocation_handle_type,unsigned int);
-CUresult cuMemGetAllocationGranularity(size_t*,const CUmem_allocation_handle_type,unsigned int);
-CUresult cuMemGetAllocationHandleType(unsigned int*,CUmem_generic_alloc_handle_t,CUmem_allocation_handle_type);
-CUresult cuMemRetainAllocationHandle(CUmemoryPool*,void*);
-CUresult cuMemRelease(CUmem_generic_alloc_handle_t);
-CUresult cuMemMap(CUmem_generic_alloc_handle_t,size_t,size_t,CUmem_generic_alloc_handle_t,CUmemoryPool,unsigned int);
-CUresult cuMemUnmap(void*,size_t);
-CUresult cuMemSetAccess(void*,size_t,const CUmem_access_flags*,int);
+CUresult cuMemCreate(CUmem_generic_alloc_handle_t*,size_t,const CUmem_allocation_handle_type,unsigned int){return 0;}
+CUresult cuMemGetAllocationGranularity(size_t*,const CUmem_allocation_handle_type,unsigned int){return 0;}
+CUresult cuMemGetAllocationHandleType(unsigned int*,CUmem_generic_alloc_handle_t,CUmem_allocation_handle_type){return 0;}
+CUresult cuMemRetainAllocationHandle(CUmemoryPool*,void*){return 0;}
+CUresult cuMemRelease(CUmem_generic_alloc_handle_t){return 0;}
+CUresult cuMemMap(CUmem_generic_alloc_handle_t,size_t,size_t,CUmem_generic_alloc_handle_t,CUmemoryPool,unsigned int){return 0;}
+CUresult cuMemUnmap(void*,size_t){return 0;}
+CUresult cuMemSetAccess(void*,size_t,const CUmem_access_flags*,int){return 0;}
 CUresult cuMemGetAddressRange(void**,size_t,void*);
 CUresult cuMemPoolTrimTo(CUmemoryPool*,size_t);
 CUresult cuMemPoolSetAccess(CUmemoryPool*,void*,size_t);
@@ -271,7 +271,7 @@ FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
 
 RUN rm -rf /usr/local/cuda/compat
 
-COPY --from=build /src/build/bin/rpc-server /usr/local/bin/
+COPY --from=build /src/build/bin/ggml-rpc-server /usr/local/bin/
 
 EXPOSE 50052/tcp
 ENTRYPOINT ["rpc-server"]
