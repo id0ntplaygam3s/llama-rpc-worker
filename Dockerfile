@@ -274,5 +274,5 @@ RUN rm -rf /usr/local/cuda/compat
 COPY --from=build /src/build/bin/ggml-rpc-server /usr/local/bin/
 
 EXPOSE 50052/tcp
-ENTRYPOINT ["rpc-server"]
+ENTRYPOINT ["ggml-rpc-server"]
 CMD ["-H", "0.0.0.0", "-p", "50052"]
