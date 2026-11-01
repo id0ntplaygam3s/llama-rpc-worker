@@ -71,7 +71,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     command: ["-H", "0.0.0.0", "-p", "50052"]
     volumes:
-      - /mnt/Applications/LLM/models:/models:rw
+      - ./models:/models:rw        # path to the model.gguf on this machine
 ```
 
 ### Windows Coordinator (example)
@@ -89,14 +89,22 @@ Don't set `-ngl` together with `--fit on`: `--fit` chooses the layer/tensor spli
 Download the following on your Windows machine:
 
 ### llama.cpp binaries (build 11869)
-Get from the official llama.cpp releases or build from source:
+Get from the [official llama.cpp releases](https://github.com/ggerganov/llama.cpp/releases) — download the `llama-server-win-cuda.zip` for your build (build 11869 / commit `d327bf1f0`), or build from source:
+
+```bash
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp && git checkout d327bf1f0
+cmake -B build -DGGML_CUDA=ON
+cmake --build build --config Release -j
+```
+
 - `llama-server.exe` — main inference server
 - `llama.dll`, `llama-common.dll`, `llama-server-impl.dll` — runtime libraries
 - `ggml.dll`, `ggml-base.dll`, `ggml-cuda.dll` — GGML backend (CUDA)
 - `ggml-rpc.dll`, `ggml-rpc-server.exe` — RPC client/server
 - CPU backend DLLs (`ggml-cpu-*.dll`) — fallback CPU inference
-- `cublas64_13.dll`, `cublasLt64_13.dll`, `cudart64_13.dll` — NVIDIA CUDA libraries
-- `libomp.dll` — OpenMP runtime
+- `cublas64_13.dll`, `cublasLt64_13.dll`, `cudart64_13.dll` — NVIDIA CUDA libraries (included with CUDA 12.x or in the llama.cpp release zip)
+- `libomp.dll` — OpenMP runtime (included with CUDA 12.x or in the llama.cpp release zip)
 
 ### Monitoring tools
 - `hw-metrics.py` — hardware metrics sidecar (GPU, CPU, memory)
@@ -104,7 +112,7 @@ Get from the official llama.cpp releases or build from source:
 - `serve-dual-gpu-With-Monitoring.bat` — dual-GPU launch script (local + RPC)
 
 ### Python
-- Python 3.13+ (or adjust the `PY` path in the bat files)
+- [Python 3.13+](https://www.python.org/downloads/) (or adjust the `PY` path in the bat files)
 
 ## Benchmark results
 
