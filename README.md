@@ -70,8 +70,6 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     command: ["-H", "0.0.0.0", "-p", "50052"]
-    volumes:
-      - ./models:/models:rw        # path to the model.gguf on this machine
 ```
 
 ### Windows Coordinator (example)
