@@ -102,7 +102,7 @@ Dual-GPU mainly speeds up generation at moderate context and slows prompt proces
 #### Benchmark setup
 
 - **Coordinator:** Windows desktop, AMD Ryzen 7 3800X (8 cores / 16 threads), 64 GB DDR4, RTX 5070 Ti 16 GB, llama-server.exe build 11869 (commit `d327bf1f0`).
-- **RPC worker:** RTX 3070 8 GB on a TrueNAS SCALE machine, running this Docker image (CUDA 12.4, build 11869).
+- **RPC worker:** TrueNAS SCALE, Intel Xeon E5-2697A v4 (16 cores / 32 threads), 64 GB DDR4, RTX 3070 8 GB, Docker image (CUDA 12.4, build 11869).
 - **Network:** wired gigabit LAN, RPC on TCP 50052.
 - **Model:** Qwen3.6-35B-A3B, UD-Q4_K_XL quant. It does not fit entirely in 16 GB, so `--fit` keeps the remainder in system RAM; with dual, `--fit` can place more of the model on the GPUs.
 - **Server flags:** `--fit on --fit-ctx 128000 --fit-target 256 -np 1 -fa on -t 8 -b 2048 -ub 2048 -ctk q8_0 -ctv q8_0` (dual adds `--rpc <worker>:50052`).
