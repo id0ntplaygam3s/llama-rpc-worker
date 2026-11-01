@@ -32,7 +32,7 @@ id0ntplaygam3s/rpc-b11869:latest
 
 ## Dependencies (Windows coordinator)
 
-Download the following to `C:\llama\` on your Windows machine:
+Download the following on your Windows machine:
 
 ### llama.cpp binaries (build 11869)
 Get from the official llama.cpp releases or build from source:
@@ -90,9 +90,78 @@ services:
 Connect to the RPC worker from your Windows `llama-server`:
 
 ```bash
-llama-server.exe -m model.gguf -ctk meta -ctk cuda -ngl 99 \
-  --rpc 192.168.0.xxx:50052
+llama-server.exe -m model.gguf --fit on --fit-ctx 128000 --fit-target 256 -np 1 -fa on -ub 2048 -ctk q8_0 -ctv q8_0 --rpc 192.168.0.xxx:50052
 ```
+
+Don't set `-ngl` together with `--fit on`: `--fit` chooses the layer/tensor split across the local GPU and the RPC device automatically.
+
+### Performance: single vs dual GPU
+
+Dual-GPU mainly speeds up generation at moderate context and slows prompt processing on large batches; see Performance below.
+
+#### Benchmark setup
+
+- **Coordinator:** Windows desktop, AMD Ryzen 7 3800X (8 cores / 16 threads), 64 GB DDR4, RTX 5070 Ti 16 GB, llama-server.exe build 11869 (commit `d327bf1f0`).
+- **RPC worker:** RTX 3070 8 GB on a TrueNAS SCALE machine, running this Docker image (CUDA 12.4, build 11869).
+- **Network:** wired gigabit LAN, RPC on TCP 50052.
+- **Model:** Qwen3.6-35B-A3B, UD-Q4_K_XL quant. It does not fit entirely in 16 GB, so `--fit` keeps the remainder in system RAM; with dual, `--fit` can place more of the model on the GPUs.
+- **Server flags:** `--fit on --fit-ctx 128000 --fit-target 256 -np 1 -fa on -t 8 -b 2048 -ub 2048 -ctk q8_0 -ctv q8_0` (dual adds `--rpc <worker>:50052`).
+- **Method:** fixed prompts of exact token counts (random filler text), 256 generated tokens per request (`ignore_eos`), prompt cache off, temperature 0 and fixed seed, 2 runs per context size, speeds taken from the server's own timings. Single and dual were run back to back.
+
+#### Results
+
+| Context | Prompt tok/s (single -> dual) | Gen tok/s (single -> dual) |
+|---------|-------------------------------|----------------------------|
+| 1K  | 723 -> 498 (-31%) | 47.2 -> 51.3 (+9%) |
+| 16K | 521 -> 554 (+6%)  | 38.6 -> 49.0 (+27%) |
+| 48K | 575 -> 404 (-30%) | 39.9 -> 40.7 (+2%) |
+
+A real 75K-token opencode prompt measured about 165 tok/s on single and about 137 tok/s on dual.
+
+#### When to use which
+
+- **Dual GPU** for short or medium sessions (under roughly 30-35K tokens of context): replies are about 10-25% faster, saving roughly 5-6 s per turn.
+- **Single GPU** for large contexts or long sessions: generation is about equal by 48K, and a cold 48K prompt load takes about 119 s on dual versus 84 s on single. Single also has no network or TrueNAS dependency.
+
+#### Caveats
+
+Only 2 runs per point; the filler-text prompts make absolute prompt speeds about 3× higher than real prompts, so trust the ratios more than the raw numbers. Results will differ on other hardware, models and networks.
+
+### Benchmark your own setup
+
+The `benchmark/` folder contains `bench.py` (Python 3, standard library only — no `pip` installs needed) which sends identical fixed-length prompts to a running `llama-server` and prints prompt and generation speed for each context size, writing a CSV.
+
+#### Quick start
+
+1. **Edit the variables** at the top of `benchmark/bench-single.bat` and `benchmark/bench-dual.bat` (llama.cpp folder, model path, Python path, RPC address).
+2. **Close other `llama-server` instances** and any client using the GPU (the batch files run `taskkill` on `llama-server.exe`, which stops **all** running `llama-server` processes).
+3. **Run `bench-single.bat`** — this measures single-GPU performance.
+4. **Start the RPC worker** and run `bench-dual.bat` — this measures dual-GPU performance.
+5. **Compare** with: `python benchmark/bench.py compare benchmark/results-single.csv benchmark/results-dual.csv`
+
+#### bench.py options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--url` | `http://127.0.0.1:8033` | llama-server API endpoint |
+| `--label` | `run` | Label written to the CSV |
+| `--out` | `results.csv` | Output CSV path |
+| `--sizes` | `1000 16000 48000` | Prompt sizes in tokens |
+| `--runs` | `2` | Repeats per size |
+| `--gen` | `256` | Tokens to generate per request |
+| `--wait` | (off) | Wait for `/health` before starting |
+
+It also works against any running `llama-server`, not just the batch files.
+
+#### Compare output
+
+The `compare` subcommand prints prompt and generation speeds per context size for each setup, the percentage change, and an estimated time for a turn of 2000 new prompt tokens plus 1000 generated tokens at the deepest context.
+
+#### Tips
+
+- Run both setups back to back with nothing else using the PC or network.
+- Use `--runs 3` or more for steadier numbers.
+- Expect the first run after startup to be a little slower (cold model load).
 
 ## Building from source
 
@@ -107,3 +176,5 @@ Or trigger a rebuild via GitHub Actions (repository dispatch).
 - GPU memory is **not reserved** at startup — allocated only when a model is loaded, freed when unloaded
 - LAN-only deployment — no internet exposure, no reverse proxy
 - Compatible with Windows `llama-server.exe` build 11869 (commit `d327bf1f0`)
+- With `--fit on`, `--tensor-split` is ignored or overridden. For manual placement use `--fit off` with `-ngl`, `--n-cpu-moe` or `-ot`.
+- Dual-GPU needs the RPC worker reachable on port 50052 before `llama-server` starts.
