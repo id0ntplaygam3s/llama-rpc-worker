@@ -13,16 +13,20 @@ Enables distributed LLM inference across multiple GPUs on different machines. Th
 - **Remote server** (RPC worker) — this container on a secondary GPU (RTX 3070 8 GB)
 - Models loaded on the RPC worker are accessed over LAN via TCP port `50052`
 
-## Hardware
+## Hardware requirements
+
+This Docker image runs on **any NVIDIA GPU with CUDA support** (Ampere architecture — sm_86 — and newer recommended, e.g. RTX 30-series and up). The llama.cpp build must match your Windows coordinator's build for RPC compatibility.
+
+The benchmark results below were collected on this specific setup:
 
 | Component | Details |
 |-----------|---------|
-| RPC Worker GPU | NVIDIA GeForce RTX 3070 (8 GB VRAM, Ampere/sm_86) |
 | Coordinator GPU | NVIDIA GeForce RTX 5070 Ti (16 GB VRAM) |
-| CPU | AMD Ryzen 7 3800X, 64 GB DDR4 |
-| CUDA | 12.4.0 runtime |
-| llama.cpp | Build 11869 (commit `d327bf1f0`) |
-| Network | LAN-only, TCP 50052 |
+| Coordinator CPU | AMD Ryzen 7 5700X3D (8 cores / 16 threads), 64 GB DDR4 3600 MHz |
+| RPC Worker GPU | NVIDIA GeForce RTX 3070 (8 GB VRAM, Ampere/sm_86) |
+| RPC Worker CPU | Intel Xeon E5-2697A v4 (16 cores / 32 threads), 64 GB DDR4 |
+| llama.cpp | Build 11869 (commit `d327bf1f0`) — must match coordinator |
+| Network | LAN, TCP 50052 |
 
 ## Image
 
@@ -101,7 +105,7 @@ Dual-GPU mainly speeds up generation at moderate context and slows prompt proces
 
 #### Benchmark setup
 
-- **Coordinator:** Windows desktop, AMD Ryzen 7 3800X (8 cores / 16 threads), 64 GB DDR4, RTX 5070 Ti 16 GB, llama-server.exe build 11869 (commit `d327bf1f0`).
+- **Coordinator:** Windows desktop, AMD Ryzen 7 5700X3D (8 cores / 16 threads), 64 GB DDR4, RTX 5070 Ti 16 GB, llama-server.exe build 11869 (commit `d327bf1f0`).
 - **RPC worker:** TrueNAS SCALE, Intel Xeon E5-2697A v4 (16 cores / 32 threads), 64 GB DDR4, RTX 3070 8 GB, Docker image (CUDA 12.4, build 11869).
 - **Network:** wired gigabit LAN, RPC on TCP 50052.
 - **Model:** Qwen3.6-35B-A3B, UD-Q4_K_XL quant. It does not fit entirely in 16 GB, so `--fit` keeps the remainder in system RAM; with dual, `--fit` can place more of the model on the GPUs.
