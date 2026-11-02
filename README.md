@@ -143,17 +143,17 @@ Single GPU is faster than dual-GPU over RPC at both prompt processing and genera
 
 | Context | Prompt tok/s single | dual | Change | Gen tok/s single | dual | Change |
 |---|---|---|---|---|---|---|
-| 512 | 1001 | 473 | −53% | 63.6 | 53.0 | −17% |
-| 1K | 1728 | 800 | −54% | 63.7 | 50.6 | −21% |
-| 2K | 2636 | 994 | −62% | 63.7 | 48.4 | −24% |
-| 4K | 2707 | 921 | −66% | 62.9 | 48.2 | −23% |
-| 8K | 2766 | 1004 | −64% | 61.3 | 50.6 | −17% |
-| 16K | 2728 | 788 | −71% | 59.6 | 53.2 | −11% |
-| 24K | 2611 | 753 | −71% | 57.6 | 49.6 | −14% |
-| 32K | 2554 | 701 | −73% | 57.2 | 42.8 | −25% |
-| 48K | 2439 | 602 | −75% | 55.1 | 44.4 | −19% |
-| 64K | 2356 | 534 | −77% | 54.4 | 42.3 | −22% |
-| 75K | 2305 | 477 | −79% | 52.6 | 38.0 | −28% |
+| 512 | 1001 | 576 | −42% | 63.6 | 57.2 | −10% |
+| 1K | 1728 | 710 | −59% | 63.7 | 52.7 | −17% |
+| 2K | 2636 | 878 | −67% | 63.7 | 53.5 | −16% |
+| 4K | 2707 | 890 | −67% | 62.9 | 53.3 | −15% |
+| 8K | 2766 | 1064 | −62% | 61.3 | 55.2 | −10% |
+| 16K | 2728 | 975 | −64% | 59.6 | 55.3 | −7% |
+| 24K | 2611 | 905 | −65% | 57.6 | 53.6 | −7% |
+| 32K | 2554 | 813 | −68% | 57.2 | 51.9 | −9% |
+| 48K | 2439 | 638 | −74% | 55.1 | 47.6 | −14% |
+| 64K | 2356 | 598 | −75% | 54.4 | 46.5 | −15% |
+| 75K | 2305 | 445 | −81% | 52.6 | 36.2 | −31% |
 
 ### Visual comparison
 
@@ -169,10 +169,11 @@ Markers show the mean of 5 runs; bars show the min–max range across runs.
 
 ### Key findings
 
-1. **Single GPU is faster at prompt processing at every context size.** Dual is 53% slower at 512 tokens, and the gap grows to 71–79% slower from 16K to 75K (about 2,300 tok/s single vs about 480 tok/s dual at 75K).
-2. **Single GPU is also faster at generation, and steadier.** Dual is 11–28% slower at every size. Single stays within about 1–2 tok/s run to run, while dual swings widely (for example 33–59 tok/s at 4K).
-3. **Per-turn cost** (2,000 new prompt tokens + 1,000 generated) favours single by 5–11 s: at 4K ≈ 16.6 s vs ≈ 22.9 s; at 16K ≈ 17.5 s vs ≈ 21.3 s; at 32K ≈ 18.3 s vs ≈ 26.2 s; at 75K ≈ 19.9 s vs ≈ 30.5 s.
-4. **Cold prompt loads are 4–5× faster on single**: 16K ≈ 6 s vs ≈ 20 s; 48K ≈ 20 s vs ≈ 80 s; 75K ≈ 32 s vs ≈ 157 s.
+1. **Single GPU is faster at prompt processing at every context size.** Dual is 42% slower at 512 tokens, 59–68% slower from 1K to 32K, and 74–81% slower from 48K to 75K (about 2,300 tok/s single vs about 445 tok/s dual at 75K).
+2. **Single GPU is also faster at generation.** Dual is 7–17% slower from 512 to 64K and 31% slower at 75K, where one dual run fell to 13 tok/s (about 20% slower without that run).
+3. **Per-turn cost** (2,000 new prompt tokens + 1,000 generated) favours single by about 3.5–12 s: at 4K ≈ 16.6 s vs ≈ 21.0 s; at 16K ≈ 17.5 s vs ≈ 20.1 s; at 32K ≈ 18.3 s vs ≈ 21.7 s; at 48K ≈ 19.0 s vs ≈ 24.1 s; at 75K ≈ 19.9 s vs ≈ 32.1 s.
+4. **Cold prompt loads are 3–6× faster on single**: 16K ≈ 6 s vs ≈ 16 s; 48K ≈ 20 s vs ≈ 77 s; 75K ≈ 32 s vs ≈ 180 s.
+5. **Dual is mostly steady but has occasional slow runs**, mainly at 48K and 75K (for example one 75K run at 13 tok/s generation).
 
 ### Recommendation
 
@@ -183,7 +184,7 @@ Markers show the mean of 5 runs; bars show the min–max range across runs.
 ### Caveats
 
 - Filler-text prompts make absolute prompt speeds higher than real prompts — trust the ratios more than the raw numbers.
-- Dual generation varies a lot between runs (standard deviation up to about 12 tok/s at 4K), whereas single is much steadier.
+- Dual generation is mostly steady but occasionally has slow runs, mainly at 48K and 75K (one 75K run dropped to 13 tok/s), whereas single is consistently steady.
 - Results will differ on other hardware, models, and networks.
 - Dual GPU needs the RPC worker reachable on port 50052 before `llama-server` starts.
 
@@ -221,7 +222,7 @@ python benchmark/bench.py --label single --out benchmark/results-single.csv ^
   --runs 5 --gen 256 --wait
 ```
 
-On this hardware, a single-GPU run takes roughly **15 minutes** and a dual-GPU run roughly **45 minutes** (about 13 and 44 minutes of request time, plus model load and idle gaps).
+On this hardware, a single-GPU run takes roughly **15 minutes** and a dual-GPU run roughly **45 minutes** (about 13 and 43 minutes of request time, plus model load and idle gaps).
 
 ### Compare output
 
