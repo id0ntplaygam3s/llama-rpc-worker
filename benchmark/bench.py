@@ -79,7 +79,7 @@ def run_bench(a):
 def load(path):
     out = {}
     with open(path) as f:
-        for r in csv.DictReader(f):
+        for r in csv.DictReader(line for line in f if not line.startswith("#")):
             out.setdefault(int(r["prompt_tokens"]), []).append(r)
     return out
 
