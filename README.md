@@ -143,17 +143,17 @@ Single GPU is faster than dual-GPU over RPC at both prompt processing and genera
 
 | Context | Prompt tok/s single | dual | Change | Gen tok/s single | dual | Change |
 |---|---|---|---|---|---|---|
-| 512 | 1001 | 576 | −42% | 63.6 | 57.2 | −10% |
-| 1K | 1728 | 710 | −59% | 63.7 | 52.7 | −17% |
-| 2K | 2636 | 878 | −67% | 63.7 | 53.5 | −16% |
-| 4K | 2707 | 890 | −67% | 62.9 | 53.3 | −15% |
-| 8K | 2766 | 1064 | −62% | 61.3 | 55.2 | −10% |
-| 16K | 2728 | 975 | −64% | 59.6 | 55.3 | −7% |
-| 24K | 2611 | 905 | −65% | 57.6 | 53.6 | −7% |
-| 32K | 2554 | 813 | −68% | 57.2 | 51.9 | −9% |
-| 48K | 2439 | 638 | −74% | 55.1 | 47.6 | −14% |
-| 64K | 2356 | 598 | −75% | 54.4 | 46.5 | −15% |
-| 75K | 2305 | 445 | −81% | 52.6 | 36.2 | −31% |
+| 512 | 1037 | 576 | −44% | 62.8 | 57.2 | −9% |
+| 1K | 1705 | 710 | −58% | 63.6 | 52.7 | −17% |
+| 2K | 2638 | 878 | −67% | 62.7 | 53.5 | −15% |
+| 4K | 2783 | 890 | −68% | 63.3 | 53.3 | −16% |
+| 8K | 2920 | 1064 | −64% | 62.8 | 55.2 | −12% |
+| 16K | 2794 | 975 | −65% | 60.5 | 55.3 | −9% |
+| 24K | 2705 | 905 | −67% | 60.7 | 53.6 | −12% |
+| 32K | 2691 | 813 | −70% | 59.5 | 51.9 | −13% |
+| 48K | 2511 | 638 | −75% | 57.2 | 47.6 | −17% |
+| 64K | 2371 | 598 | −75% | 54.1 | 46.5 | −14% |
+| 75K | 2341 | 445 | −81% | 52.6 | 36.2 | −31% |
 
 ### Visual comparison
 
@@ -169,10 +169,10 @@ Markers show the mean of 5 runs; bars show the min–max range across runs.
 
 ### Key findings
 
-1. **Single GPU is faster at prompt processing at every context size.** Dual is 42% slower at 512 tokens, 59–68% slower from 1K to 32K, and 74–81% slower from 48K to 75K (about 2,300 tok/s single vs about 445 tok/s dual at 75K).
-2. **Single GPU is also faster at generation.** Dual is 7–17% slower from 512 to 64K and 31% slower at 75K, where one dual run fell to 13 tok/s (about 20% slower without that run).
-3. **Per-turn cost** (2,000 new prompt tokens + 1,000 generated) favours single by about 3.5–12 s: at 4K ≈ 16.6 s vs ≈ 21.0 s; at 16K ≈ 17.5 s vs ≈ 20.1 s; at 32K ≈ 18.3 s vs ≈ 21.7 s; at 48K ≈ 19.0 s vs ≈ 24.1 s; at 75K ≈ 19.9 s vs ≈ 32.1 s.
-4. **Cold prompt loads are 3–6× faster on single**: 16K ≈ 6 s vs ≈ 16 s; 48K ≈ 20 s vs ≈ 77 s; 75K ≈ 32 s vs ≈ 180 s.
+1. **Single GPU is faster at prompt processing at every context size.** Dual is 44% slower at 512 tokens, 58–70% slower from 1K to 32K, and 75–81% slower from 48K to 75K (about 2,340 tok/s single vs about 445 tok/s dual at 75K).
+2. **Single GPU is also faster at generation.** Dual is 9–17% slower from 512 to 64K and 31% slower at 75K, where one dual run fell to 13 tok/s (about 20% slower without that run).
+3. **Per-turn cost** (2,000 new prompt tokens + 1,000 generated) favours single by about 3–12 s: at 4K ≈ 16.5 s vs ≈ 21.0 s; at 16K ≈ 17.2 s vs ≈ 20.1 s; at 32K ≈ 17.5 s vs ≈ 21.7 s; at 48K ≈ 18.3 s vs ≈ 24.1 s; at 75K ≈ 19.9 s vs ≈ 32.1 s.
+4. **Cold prompt loads are 3–6× faster on single** at 16K and above: 16K ≈ 6 s vs ≈ 16 s; 48K ≈ 19 s vs ≈ 77 s; 75K ≈ 32 s vs ≈ 180 s.
 5. **Dual is mostly steady but has occasional slow runs**, mainly at 48K and 75K (for example one 75K run at 13 tok/s generation).
 
 ### Recommendation
@@ -234,6 +234,7 @@ The `compare` subcommand prints prompt and generation speeds per context size fo
 - Use `--runs 3` or more for steadier numbers.
 - Expect the first run after startup to be slower (cold model load).
 - Watch for speeds that decay run after run — this can indicate throttling or memory pressure.
+- Close other applications first (browsers, Discord, screen sharing, slicers and anything else that uses the GPU or VRAM). Background load can cut prompt-processing speed several-fold, because `--fit` sizes the model split to the VRAM that is actually free.
 
 ## Building from source
 
