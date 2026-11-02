@@ -14,8 +14,11 @@ Prebuilt Docker image of the llama.cpp RPC server with CUDA GPU acceleration, bu
 - [Dependencies (Windows coordinator)](#dependencies-windows-coordinator)
 - [Benchmark results](#benchmark-results)
   - [Setup](#setup)
-  - [Performance: single vs dual GPU](#performance-single-vs-dual-gpu)
+  - [What was tested](#what-was-tested)
+  - [Full results](#full-results)
+  - [Visual comparison](#visual-comparison)
   - [Key findings](#key-findings)
+  - [Recommendation](#recommendation)
   - [Caveats](#caveats)
 - [Benchmark your own setup](#benchmark-your-own-setup)
   - [Quick start](#quick-start)
@@ -138,17 +141,17 @@ cmake --build build --config Release -j
 
 | Context | Prompt tok/s single | dual | Change | Gen tok/s single | dual | Change |
 |---|---|---|---|---|---|---|
-| 512 | 859 | 554 | −35% | 51.7 | 50.3 | −3% |
-| 1K | 579 | 540 | −7% | 50.8 | 54.2 | +7% |
-| 2K | 665 | 579 | −13% | 51.0 | 54.1 | +6% |
-| 4K | 724 | 592 | −18% | 51.8 | 55.4 | +7% |
-| 8K | 763 | 477 | −37% | 51.7 | 45.4 | −12% |
-| 16K | 750 | 449 | −40% | 48.4 | 45.0 | −7% |
-| 24K | 627 | 395 | −37% | 46.0 | 46.0 | 0% |
-| 32K | 609 | 281 | −54% | 45.0 | 40.2 | −11% |
-| 48K | 498 | 194 | −61% | 42.0 | 13.7 | −67% |
-| 64K | 358 | 171 | −52% | 39.2 | 8.2 | −79% |
-| 75K | 376 | 153 | −59% | 39.6 | 7.4 | −81% |
+| 512 | 859 | 473 | −45% | 51.7 | 53.0 | +2% |
+| 1K | 579 | 800 | +38% | 50.8 | 50.6 | 0% |
+| 2K | 665 | 994 | +49% | 51.0 | 48.4 | −5% |
+| 4K | 724 | 921 | +27% | 51.8 | 48.2 | −7% |
+| 8K | 763 | 1004 | +32% | 51.7 | 50.6 | −2% |
+| 16K | 750 | 788 | +5% | 48.4 | 53.2 | +10% |
+| 24K | 627 | 753 | +20% | 46.0 | 49.6 | +8% |
+| 32K | 609 | 701 | +15% | 45.0 | 42.8 | −5% |
+| 48K | 498 | 602 | +21% | 42.0 | 44.4 | +6% |
+| 64K | 358 | 534 | +49% | 39.2 | 42.3 | +8% |
+| 75K | 376 | 477 | +27% | 39.6 | 38.0 | −4% |
 
 ### Visual comparison
 
@@ -160,35 +163,25 @@ cmake --build build --config Release -j
 
 ![Generation Speed](benchmark/gen-chart.png)
 
-\* dual wins at 1–4K generation (by about 6–7%, ≈ 1 s per turn).
-
 ### Key findings
 
-1. **Single GPU is faster at prompt processing at every context size.** The gap widens from −7% at 1K to −61% at 48K.
-2. **Dual GPU only wins at 1–4K generation** (by about 6–7%), worth roughly 1 second per turn. From 8K up, dual is equal or slower.
-3. **Dual cliff at 48K and above:** dual generation drops to 7–14 tok/s while single holds 39–42 tok/s all the way to 75K. The cause was not established and may be specific to this setup (e.g. power/thermal limits or memory pressure on the worker machine), so treat dual's 48K+ numbers with caution.
-4. **Per-turn cost** (2,000 new prompt tokens + 1,000 generated) at largest common context:
-   - At 16K: single ≈ 23 s, dual ≈ 27 s
-   - At 32K: single ≈ 25.5 s, dual ≈ 32 s
-   - At 4K: roughly equal
-5. **Cold prompt loads** (mean time to process a prompt from scratch):
-
-   | Context | Single | Dual |
-   |---|---|---|
-   | 16K | ≈ 21 s | ≈ 37 s |
-   | 48K | ≈ 107 s | ≈ 249 s |
-   | 75K | ≈ 200 s | ≈ 490 s |
-
-6. **Real-world measurement:** a real 75K-token opencode prompt measured about 165 tok/s on single and about 137 tok/s on dual.
+1. **Dual is faster at prompt processing from 1K up** (+15% to +49%, except 16K at +5%); only at 512 tokens is single clearly faster.
+2. **Generation speed is about equal** — differences between single and dual are within run-to-run noise (roughly ±10%).
+3. **Per-turn cost is roughly equal at 16K–75K** because generation dominates: at 16K single ≈ 23 s vs dual ≈ 21 s; at 32K single ≈ 25.5 s vs dual ≈ 26 s; at 75K both ≈ 30.5 s.
+4. **Cold loads of long prompts are about 20–25% faster on dual** at 48K–75K (80 s vs 107 s at 48K; 157 s vs 200 s at 75K).
+5. **The earlier 48K+ dual generation cliff (7–14 tok/s) did not reproduce** in the re-run, so it was most likely a transient problem on the worker (e.g. throttling or memory pressure) rather than a property of RPC.
 
 ### Recommendation
 
-**Default to single GPU** for this model on this hardware. Dual may still make sense when a model does not fit otherwise (a larger model or quant than one GPU plus RAM can hold); that case was not tested here.
+**Dual GPU is worthwhile for long-context, prompt-heavy work** (roughly 30K+ tokens, where prompt processing and cold loads are 15–50% / 20–25% faster) and when the model does not fit on one GPU plus RAM. Per-turn time and generation speed are about the same either way, and single remains simpler and slightly faster for very short prompts (512 tokens).
+
+*This applies to this model and hardware — results will vary.*
 
 ### Caveats
 
 - Filler-text prompts make absolute prompt speeds higher than real prompts — trust the ratios more than the raw numbers.
-- Single-GPU prompt speed also varied at 48K+ (about 320–680 tok/s).
+- Single numbers were not re-run alongside the new dual run and single prompt speed was noisy at 48K+ (about 320–680 tok/s), so re-run single with the same flags before treating the gaps as exact.
+- Dual generation varies a lot between runs (standard deviation up to about 12 tok/s at 4K).
 - Results will differ on other hardware, models, and networks.
 - Dual GPU needs the RPC worker reachable on port 50052 before `llama-server` starts.
 
