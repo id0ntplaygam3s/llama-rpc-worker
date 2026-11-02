@@ -1,168 +1,139 @@
 #!/usr/bin/env python3
-"""Regenerate benchmark charts from results-single.csv and results-dual.csv.
+"""Regenerate benchmark/prompt-chart.png and benchmark/gen-chart.png.
 
-Usage:
-    python generate-charts.py          # reads ./results-single.csv and ./results-dual.csv
-    python generate-charts.py --single path --dual path --out-dir path
+Reads results-single.csv and results-dual.csv from the same folder as this
+script (columns: label,prompt_tokens,run,pp_tps,tg_tps,pp_s,tg_s,gen_tokens)
+and writes the two PNGs next to them.
 
-Outputs:
-    prompt-chart.png  — prompt processing speed (tok/s), higher is better
-    gen-chart.png     — generation speed (tok/s), higher is better
+Requires: matplotlib  (pip install matplotlib)
+Usage:    python benchmark/generate-charts.py
 """
-
-import argparse
 import csv
-import os
-import sys
+import statistics
+from collections import defaultdict
+from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# ── helpers ──────────────────────────────────────────────────────────────────
+HERE = Path(__file__).resolve().parent
+SINGLE_CSV = HERE / "results-single.csv"
+DUAL_CSV = HERE / "results-dual.csv"
 
-def read_csv(path):
-    """Return dict: {context_size: (mean_pp, mean_tg)}."""
-    data = {}
-    with open(path, newline="") as f:
-        reader = csv.DictReader(f)
-        buckets = {}
-        for row in reader:
-            ctx = int(row["prompt_tokens"])
-            pp = float(row["pp_tps"])
-            tg = float(row["tg_tps"])
-            buckets.setdefault(ctx, []).append((pp, tg))
-        for ctx, runs in buckets.items():
-            n = len(runs)
-            data[ctx] = (
-                sum(r[0] for r in runs) / n,
-                sum(r[1] for r in runs) / n,
-            )
+SINGLE_COLOR = "#1f77b4"
+DUAL_COLOR = "#e8710a"
+DODGE = 0.09  # horizontal offset so the two series' error bars don't overlap
+
+
+def label(tokens: int) -> str:
+    if tokens < 1000:
+        return str(tokens)
+    return f"{tokens // 1000}K"
+
+
+def load(path: Path):
+    """Return {prompt_tokens: {"pp": [...], "tg": [...]}}.
+
+    Skips lines starting with '#' (benchmark context comments).
+    """
+    data = defaultdict(lambda: {"pp": [], "tg": []})
+    with open(path, newline="", encoding="utf-8") as f:
+        lines = (line for line in f if not line.startswith("#"))
+        for row in csv.DictReader(lines):
+            size = int(row["prompt_tokens"])
+            data[size]["pp"].append(float(row["pp_tps"]))
+            data[size]["tg"].append(float(row["tg_tps"]))
     return data
 
 
-def read_minmax(path):
-    """Return dict: {context_size: (min_tg, max_tg)} for dual generation."""
-    mm = {}
-    with open(path, newline="") as f:
-        reader = csv.DictReader(f)
-        buckets = {}
-        for row in reader:
-            ctx = int(row["prompt_tokens"])
-            tg = float(row["tg_tps"])
-            buckets.setdefault(ctx, []).append(tg)
-        for k, vals in buckets.items():
-            mm[k] = (min(vals), max(vals))
-    return mm
+def stats(values):
+    return statistics.mean(values), min(values), max(values)
 
 
-def fmt_ctx(ctx):
-    """Format context size for axis labels."""
-    if ctx >= 1000:
-        return f"{ctx // 1000}K"
-    return str(ctx)
+def draw(metric, title, ylabel, out_path, single, dual, note):
+    sizes = sorted(set(single) & set(dual))
+    xs = list(range(len(sizes)))  # evenly spaced: no overlapping labels, no implied in-between values
 
+    fig, ax = plt.subplots(figsize=(11, 6), dpi=150)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
 
-# ── plotting ─────────────────────────────────────────────────────────────────
+    for series, color, marker, name, offset, style in (
+        (single, SINGLE_COLOR, "o", "Single GPU", -DODGE, "-"),
+        (dual, DUAL_COLOR, "s", "Dual GPU", DODGE, "--"),
+    ):
+        means, lows, highs = [], [], []
+        for s in sizes:
+            m, lo, hi = stats(series[s][metric])
+            means.append(m)
+            lows.append(m - lo)
+            highs.append(hi - m)
+        pos = [x + offset for x in xs]
+        ax.errorbar(
+            pos,
+            means,
+            yerr=[lows, highs],
+            color=color,
+            marker=marker,
+            markersize=7,
+            linewidth=2,
+            linestyle=style,
+            capsize=4,
+            elinewidth=1.4,
+            label=name,
+        )
 
-def plot_chart(title, y_label, data_single, data_dual, error_key,
-               output_path, dual_minmax=None):
-    """Draw a line chart with single/dual lines, save to *output_path*."""
-    all_ctxs = sorted(set(data_single) | set(data_dual))
-
-    fig, ax = plt.subplots(figsize=(10, 5.5))
-
-    color_single = "#1f77b4"
-    color_dual = "#ff7f0e"
-    marker_single = "o"
-    marker_dual = "s"
-
-    # Single line
-    ys_single = [data_single[c][1] if error_key == "tg" else data_single[c][0]
-                 for c in all_ctxs]
-    ax.plot(all_ctxs, ys_single, marker=marker_single, color=color_single,
-            linewidth=2, markersize=7, label="Single GPU", zorder=3)
-
-    # Dual line
-    ys_dual = [data_dual[c][1] if error_key == "tg" else data_dual[c][0]
-               for c in all_ctxs]
-    ax.plot(all_ctxs, ys_dual, marker=marker_dual, color=color_dual,
-            linewidth=2, linestyle="--", markersize=7,
-            label="Dual GPU", zorder=3)
-
-    # Dual error bars (fill + errorbar)
-    if dual_minmax and error_key == "tg":
-        valid_ctxs = [c for c in all_ctxs if c in dual_minmax]
-        lo = [dual_minmax[c][0] for c in valid_ctxs]
-        hi = [dual_minmax[c][1] for c in valid_ctxs]
-        means = [data_dual[c][1] for c in valid_ctxs]
-
-        ax.fill_between(valid_ctxs, lo, hi, color=color_dual, alpha=0.15,
-                        zorder=1, label="Dual GPU (min–max range)")
-        ax.errorbar(valid_ctxs, means,
-                    yerr=[[means[i] - lo[i] for i in range(len(means))],
-                          [hi[i] - means[i] for i in range(len(means))]],
-                    fmt="s", color=color_dual, capsize=4, linewidth=2,
-                    markersize=7, zorder=4,
-                    label="Dual GPU (± range)")
-
-    # ── styling ───────────────────────────────────────────────────────────
-    ax.set_title(title, fontsize=14, pad=12)
-    ax.set_ylabel(y_label, fontsize=12)
-    ax.set_xlabel("Context size (tokens)", fontsize=12)
-    ax.set_xscale("log")
-    ax.set_xticks(all_ctxs)
-    ax.set_xticklabels([fmt_ctx(c) for c in all_ctxs])
-    ax.grid(True, alpha=0.3, which="both")
-    ax.tick_params(axis="both", labelsize=11)
-
-    ax.legend(fontsize=10, loc="best")
-
-    plt.tight_layout()
-    fig.savefig(output_path, dpi=120)
+    ax.set_xticks(xs)
+    ax.set_xticklabels([label(s) for s in sizes])
+    ax.set_xlabel("Context size (tokens)", fontsize=11)
+    ax.set_ylabel(ylabel, fontsize=11)
+    ax.set_title(title, fontsize=14, pad=26)
+    ax.text(
+        0.5,
+        1.015,
+        note,
+        transform=ax.transAxes,
+        ha="center",
+        va="bottom",
+        fontsize=9.5,
+        color="#555555",
+    )
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.grid(False, axis="x")
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    ax.legend(frameon=False, fontsize=10, loc="upper right")
+    fig.tight_layout()
+    fig.savefig(out_path, facecolor="white")
     plt.close(fig)
-    print(f"  Saved: {output_path}")
+    print(f"wrote {out_path}")
 
-
-# ── main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate benchmark charts")
-    parser.add_argument("--single", default="results-single.csv")
-    parser.add_argument("--dual", default="results-dual.csv")
-    parser.add_argument("--out-dir", default=".")
-    args = parser.parse_args()
+    single = load(SINGLE_CSV)
+    dual = load(DUAL_CSV)
+    note = "Markers = mean of 5 runs; bars = min–max across runs"
 
-    data_single = read_csv(args.single)
-    data_dual = read_csv(args.dual)
-
-    print(f"Single: {len(data_single)} context sizes")
-    print(f"Dual:   {len(data_dual)} context sizes")
-
-    # Read dual min-max for error bars
-    dual_csv = os.path.join(os.path.dirname(os.path.abspath(args.dual)),
-                            "results-dual.csv")
-    dual_minmax = None
-    if os.path.exists(dual_csv):
-        dual_minmax = read_minmax(dual_csv)
-        print(f"Dual min-max: {len(dual_minmax)} context sizes")
-
-    plot_chart(
+    draw(
+        "pp",
         "Prompt processing (tok/s) — higher is better",
         "Prompt tokens/s",
-        data_single, data_dual, "pp",
-        os.path.join(args.out_dir, "prompt-chart.png"),
+        HERE / "prompt-chart.png",
+        single,
+        dual,
+        note,
     )
-
-    plot_chart(
+    draw(
+        "tg",
         "Generation speed (tok/s) — higher is better",
         "Generated tokens/s",
-        data_single, data_dual, "tg",
-        os.path.join(args.out_dir, "gen-chart.png"),
-        dual_minmax=dual_minmax,
+        HERE / "gen-chart.png",
+        single,
+        dual,
+        note,
     )
-
-    print("Done.")
 
 
 if __name__ == "__main__":

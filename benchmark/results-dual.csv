@@ -1,3 +1,15 @@
+# Benchmark context
+# Model: Qwen3.6-35B-A3B, UD-Q4_K_XL quant
+# Coordinator GPU: NVIDIA GeForce RTX 5070 Ti (16 GB VRAM)
+# Coordinator CPU: AMD Ryzen 7 5700X3D (8 cores / 16 threads), 64 GB DDR4 3600 MHz
+# RPC Worker GPU: NVIDIA GeForce RTX 3070 (8 GB VRAM, Ampere/sm_86)
+# RPC Worker CPU: Intel Xeon E5-2697A v4 (16 cores / 32 threads), 64 GB DDR4
+# llama.cpp: Build 11869 (commit d327bf1f0)
+# Network: Wired gigabit LAN, RPC on TCP 50052
+# Flags single: --fit on --fit-ctx 128000 --fit-target 256 -np 1 -fa on -t 8 -b 2048 -ub 2048 -ctk q8_0 -ctv q8_0
+# Flags dual: same + --rpc <rpc_worker_ip>:50052
+# Method: fixed-length filler prompts (seed 42), prompt cache off, temp 0, ignore_eos
+# 5 runs per context size, 256 generated tokens per request, ascending order
 label,prompt_tokens,run,pp_tps,tg_tps,pp_s,tg_s,gen_tokens
 dual,512,1,565.61,54.57,0.91,4.67,256
 dual,512,2,259.18,56.69,1.98,4.5,256
@@ -11,7 +23,7 @@ dual,1000,4,869.24,50.0,1.15,5.1,256
 dual,1000,5,829.58,54.09,1.21,4.71,256
 dual,2000,1,1043.05,36.43,1.92,7.0,256
 dual,2000,2,941.16,55.24,2.13,4.62,256
-dual,2000,3,1031.31,56.47,1.94,4.52,256
+dual,2000,3,1031.31,56.47,4.52,256
 dual,2000,4,1017.08,41.96,1.97,6.08,256
 dual,2000,5,938.24,51.78,2.13,4.92,256
 dual,4000,1,964.54,54.45,4.15,4.68,256
